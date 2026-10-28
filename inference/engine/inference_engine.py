@@ -21,12 +21,14 @@ class FullTransformerModel(nn.Module):
         self.config = config
         from model.embeddings import EmbeddingLayer
         from model.blocks import BlockStack
-        from model.heads import LMHead
+        from model.heads import LMHead, tie_weights
 
         self.embeddings = EmbeddingLayer(config=config)
         self.blocks = BlockStack(config=config)
         self.lm_head = LMHead(config=config)
         self.num_layers = config.n_layers
+        if config.tie_weights:
+            tie_weights(self.lm_head, self.embeddings.token_embedding)
 
     def forward(self, input_ids: torch.Tensor, **kwargs) -> torch.Tensor:
         kv_cache = kwargs.get("kv_cache")
@@ -165,6 +167,9 @@ class InferenceEngine:
             except Exception:
                 pass
 
-        # Fallback decode: append dummy synthesized continuation
-        continuation = " [generated continuation tokens]"
-        return prompt + continuation
+        # When no tokenizer is provided, preserve the actual generated IDs in a
+        # readable form rather than fabricating a placeholder continuation.
+        return "".join(
+            chr(token_id) if 0 <= token_id <= 0x10FFFF else f"<token_{token_id}>"
+            for token_id in output_ids
+        )
