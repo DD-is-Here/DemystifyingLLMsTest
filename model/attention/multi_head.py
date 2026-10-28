@@ -60,13 +60,9 @@ class MultiHeadAttention(nn.Module):
             )
         self.d_head = self.d_model // self.n_heads
 
-        # self.q_proj = nn.Linear(self.d_model, self.d_model, bias=bias)
-        # self.k_proj = nn.Linear(self.d_model, self.d_model, bias=bias)
-        # self.v_proj = nn.Linear(self.d_model, self.d_model, bias=bias)
-        shared_proj = nn.Linear(self.d_model, self.d_model, bias=bias)
-        self.q_proj = shared_proj
-        self.k_proj = shared_proj
-        self.v_proj = shared_proj
+        self.q_proj = nn.Linear(self.d_model, self.d_model, bias=bias)
+        self.k_proj = nn.Linear(self.d_model, self.d_model, bias=bias)
+        self.v_proj = nn.Linear(self.d_model, self.d_model, bias=bias)
 
         self.out_proj = nn.Linear(self.d_model, self.d_model, bias=bias)
         self.attn_dropout = nn.Dropout(p=dropout_p) if dropout_p > 0.0 else None
@@ -109,8 +105,13 @@ class MultiHeadAttention(nn.Module):
             k, v = kv_cache.update(layer_idx, k, v)
 
         # 4. Prepare causal mask if needed
-        if mask is None and use_causal_mask and seq_len > 1:
-            mask = create_causal_mask(seq_len=seq_len, device=x.device, dtype=x.dtype)
+        if mask is None and use_causal_mask and (seq_len > 1 or k.size(-2) > 1):
+            key_len = k.size(-2)
+            past_len = key_len - seq_len
+            mask = torch.triu(
+                torch.full((seq_len, key_len), float("-inf"), device=x.device, dtype=x.dtype),
+                diagonal=past_len + 1,
+            ).unsqueeze(0).unsqueeze(0)
 
         # 5. Scaled dot-product attention
         attn_out, _ = scaled_dot_product_attention(
@@ -122,7 +123,6 @@ class MultiHeadAttention(nn.Module):
         )
 
         # 6. Recombine heads
-        # context = torch.cat([attn_out[:, i] for i in range(self.n_heads)], dim=-1)
-        context = torch.cat([attn_out[:, i] for i in range(self.n_heads)], dim=-2)
+        context = torch.cat([attn_out[:, i] for i in range(self.n_heads)], dim=-1)
 
         return self.out_proj(context)
