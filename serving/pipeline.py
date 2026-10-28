@@ -56,17 +56,23 @@ class ServingPipeline:
 
         # Step 2: Model Forward Execution
         if self.model is not None and callable(self.model):
-            output = self.model(input_ids)
-            if isinstance(output, tuple):
-                output = output[0]
+            from inference.generation import autoregressive_generate
+
+            new_tokens = (
+                max_new_tokens
+                if max_new_tokens is not None
+                else self.inference_config.max_new_tokens
+            )
+            output_ids = autoregressive_generate(
+                self.model,
+                input_ids,
+                max_new_tokens=new_tokens,
+            )
         else:
-            output = None
+            output_ids = input_ids
 
         # Step 3: Decoding
         if self.tokenizer is not None and hasattr(self.tokenizer, "decode"):
-            if isinstance(output, torch.Tensor):
-                out_tokens = output.argmax(dim=-1).squeeze(0).tolist()
-                return self.tokenizer.decode(out_tokens)
-            return self.tokenizer.decode(tokens)
+            return self.tokenizer.decode(output_ids.squeeze(0).tolist())
 
         return f"{text} [processed]"
